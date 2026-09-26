@@ -33,15 +33,16 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
   const fetchOperations = async () => {
     setLoading(true);
     try {
-      const type = ['receipt', 'delivery', 'internal', 'adjustment'].includes(filter.toLowerCase()) ? filter.toLowerCase() : undefined;
-      const status = ['draft', 'waiting', 'ready', 'done', 'canceled'].includes(filter.toLowerCase()) ? filter.toLowerCase() : undefined;
+      const lowerFilter = filter.toLowerCase();
+      const type = ['receipt', 'delivery', 'internal', 'adjustment'].includes(lowerFilter) ? lowerFilter : undefined;
+      const status = ['draft', 'waiting', 'ready', 'done', 'canceled'].includes(lowerFilter) ? lowerFilter : undefined;
 
       const res = await api.getOperations({ type, status });
       if (res.success) {
         setOperations(res.data);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load operations:', err);
     } finally {
       setLoading(false);
     }
@@ -56,7 +57,7 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
       if (prodRes.success) setProducts(prodRes.data);
       if (locRes.success) setLocations(locRes.data);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load aux data:', err);
     }
   };
 
