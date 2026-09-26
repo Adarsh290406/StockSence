@@ -200,28 +200,82 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
- * DELETE /api/products/:id
- * Safe delete: verifies no active stock quantities exist.
+ * POST /api/products/:id/adjust
+ * Direct stock adjustment for a product at default/main warehouse location
  */
-router.delete('/:id', async (req, res) => {
+router.post('/:id/adjust', async (req, res) => {
   try {
     const { id } = req.params;
+    const { new_on_hand, location_id } = req.body;
 
-    const stockCount = await query('SELECT SUM(on_hand) AS total FROM stock_quants WHERE product_id = $1', [id]);
-    const totalStock = Number(stockCount.rows[0]?.total || 0);
-
-    if (totalStock > 0) {
-      return res.status(400).json({
-        success: false,
-        error: `Cannot delete product with active inventory (${totalStock} units on hand). Perform an adjustment or transfer first.`
-      });
+    if (new_on_hand === undefined || isNaN(Number(new_on_hand)) || Number(new_on_hand) < 0) {
+      return res.status(400).json({ success: false, error: 'Valid new_on_hand quantity >= 0 is required' });
     }
 
-    await query('DELETE FROM products WHERE id = $1', [id]);
-    res.json({ success: true, message: 'Product deleted successfully' });
+    const prodRes = await query('SELECT * FROM products WHERE id = $1', [id]);
+    if (prodRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Product not found' });
+    }
+    const product = prodRes.rows[0];
+
+    // Find target location or default to first internal stock location
+    let targetLocId = location_id;
+    if (!targetLocId) {
+      const locRes = await query(`SELECT id FROM locations WHERE location_type = 'internal' ORDER BY id ASC LIMIT 1`);
+      if (locRes.rows.length > 0) {
+        targetLocId = locRes.rows[0].id;
+      } else {
+        const anyLoc = await query('SELECT id FROM locations ORDER BY id ASC LIMIT 1');
+        targetLocId = anyLoc.rows[0]?.id;
+      }
+    }
+
+    if (!targetLocId) {
+      return res.status(400).json({ success: false, error: 'No warehouse location found to assign stock' });
+    }
+
+    // Read current on_hand
+    const currentQuantRes = await query('SELECT on_hand FROM stock_quants WHERE product_id = $1 AND location_id = $2', [id, targetLocId]);
+    const prevOnHand = Number(currentQuantRes.rows[0]?.on_hand || 0);
+    const targetQty = Number(new_on_hand);
+    const diff = targetQty - prevOnHand;
+
+    // Upsert quant
+    await query(`
+      INSERT INTO stock_quants (product_id, location_id, on_hand, reserved)
+      VALUES ($1, $2, $3, 0)
+      ON CONFLICT (product_id, location_id)
+      DO UPDATE SET on_hand = $3, updated_at = CURRENT_TIMESTAMP
+    `, [id, targetLocId, targetQty]);
+
+    // Record in stock_ledger
+    if (diff !== 0) {
+      const refNo = `ADJ/${new Date().getFullYear()}/${String(Date.now()).slice(-4)}`;
+      await query(`
+        INSERT INTO stock_ledger (
+          reference_no, product_id, from_location_id, to_location_id,
+          quantity, movement_type, notes, user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        refNo,
+        id,
+        diff < 0 ? targetLocId : null,
+        diff > 0 ? targetLocId : null,
+        Math.abs(diff),
+        'inventory_adjustment',
+        `Stock manual adjustment from ${prevOnHand} to ${targetQty}`,
+        req.user.id
+      ]);
+    }
+
+    return res.json({
+      success: true,
+      message: `Stock updated to ${targetQty} ${product.uom}`,
+      data: { product_id: id, on_hand: targetQty }
+    });
   } catch (err) {
-    console.error('Delete product error:', err);
-    res.status(500).json({ success: false, error: 'Failed to delete product' });
+    console.error('Adjust stock error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to adjust stock' });
   }
 });
 
