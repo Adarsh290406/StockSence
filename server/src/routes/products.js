@@ -1,14 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { query } = require('../db/database');
-const { authenticateToken } = require('../utils/security');
+const { authenticateUser } = require('./auth');
+
+// Apply authentication to all product routes
+router.use(authenticateUser);
 
 /**
  * GET /api/products
  * Query Params: ?category_id=&search=
  * Returns products with aggregated on_hand, reserved, and free stock.
  */
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { category_id, search } = req.query;
 
@@ -49,7 +52,7 @@ router.get('/', authenticateToken, async (req, res) => {
  * GET /api/products/:id
  * Fetches single product + stock breakdown per warehouse & location.
  */
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -100,7 +103,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
  * POST /api/products
  * Create a new product.
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, sku, category_id, uom = 'Units', per_unit_cost = 0.0, min_stock_alert = 5, max_stock = null, image_url = null } = req.body;
 
@@ -141,7 +144,7 @@ router.post('/', authenticateToken, async (req, res) => {
  * PUT /api/products/:id
  * Update product specifications.
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await query('SELECT * FROM products WHERE id = $1', [id]);
@@ -200,7 +203,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
  * DELETE /api/products/:id
  * Safe delete: verifies no active stock quantities exist.
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
