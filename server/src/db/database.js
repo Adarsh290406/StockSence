@@ -1,94 +1,71 @@
 /**
- * StockSense - Database Connection and Transaction Manager
- * Implements pure relational SQL engine via Node.js native SQL DatabaseSync
+ * StockSense - PostgreSQL Database Connection & Pool Manager
+ * Implements enterprise connection pooling & transaction management using 'pg'
  */
-const { DatabaseSync } = require('node:sqlite');
-const fs = require('node:fs');
-const path = require('node:path');
+const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
 
-const DB_DIR = path.resolve(__dirname, '../../data');
-const DB_PATH = path.join(DB_DIR, 'stocksense.db');
-const SCHEMA_PATH = path.resolve(__dirname, 'schema.sql');
+// Configure connection pool with environmental defaults
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/stocksense',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 
-// Ensure data directory exists
-if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
-}
-
-// Initialize SQLite connection
-const db = new DatabaseSync(DB_PATH);
-
-// Configure database pragmas for high performance and strict data integrity
-db.exec('PRAGMA foreign_keys = ON;');
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA synchronous = NORMAL;');
-
-// Initialize schema
-function initSchema() {
-    const schemaSql = fs.readFileSync(SCHEMA_PATH, 'utf8');
-    db.exec(schemaSql);
-}
-
-// Run schema initialization
-initSchema();
+pool.on('error', (err) => {
+  console.error('[PostgreSQL Pool Error]:', err.message);
+});
 
 /**
- * Execute a SELECT query returning all matching rows
- * @param {string} sql 
- * @param {Array} params 
- * @returns {Array}
+ * Execute a parameterized query
+ * @param {string} text - SQL Query with $1, $2 placeholders
+ * @param {Array} params - Array of parameter values
  */
-function query(sql, params = []) {
-    const stmt = db.prepare(sql);
-    return stmt.all(...params);
+async function query(text, params = []) {
+  const start = Date.now();
+  const res = await pool.query(text, params);
+  const duration = Date.now() - start;
+  if (process.env.DEBUG_SQL === 'true') {
+    console.log('[Executed SQL]', { text, duration: `${duration}ms`, rows: res.rowCount });
+  }
+  return res;
 }
 
 /**
- * Execute a SELECT query returning the first matching row
- * @param {string} sql 
- * @param {Array} params 
- * @returns {Object|null}
+ * Run operations within an ACID compliant database transaction
+ * @param {Function} callback - async function receiving client
  */
-function queryOne(sql, params = []) {
-    const stmt = db.prepare(sql);
-    const rows = stmt.all(...params);
-    return rows.length > 0 ? rows[0] : null;
+async function transaction(callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
- * Execute an INSERT, UPDATE, or DELETE query
- * @param {string} sql 
- * @param {Array} params 
- * @returns {{ lastInsertRowid: number, changes: number }}
+ * Initialize PostgreSQL tables and indexes from schema.sql
  */
-function run(sql, params = []) {
-    const stmt = db.prepare(sql);
-    return stmt.run(...params);
-}
-
-/**
- * Execute operations within an atomic ACID transaction
- * Automatically commits on success and rolls back on error
- * @param {Function} callback 
- * @returns {*}
- */
-function transaction(callback) {
-    db.exec('BEGIN TRANSACTION;');
-    try {
-        const result = callback({ query, queryOne, run });
-        db.exec('COMMIT;');
-        return result;
-    } catch (error) {
-        db.exec('ROLLBACK;');
-        throw error;
-    }
+async function initSchema() {
+  const schemaPath = path.resolve(__dirname, 'schema.sql');
+  const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+  await query(schemaSql);
+  console.log('✓ PostgreSQL schema synchronized successfully.');
 }
 
 module.exports = {
-    db,
-    query,
-    queryOne,
-    run,
-    transaction,
-    initSchema
+  pool,
+  query,
+  transaction,
+  initSchema
 };
