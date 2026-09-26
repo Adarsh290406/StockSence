@@ -4,3 +4,5 @@ dist/
 *.log
 .env
 .system_generated/
+server/data/
+*.db
