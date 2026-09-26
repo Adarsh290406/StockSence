@@ -12,7 +12,19 @@
     "build": "npm --prefix client run build",
     "test": "node server/test.js"
   },
-  "keywords": ["inventory", "odoo", "erp", "stocksense", "ims", "warehouse"],
+  "keywords": [
+    "inventory",
+    "odoo",
+    "erp",
+    "stocksense",
+    "ims",
+    "warehouse"
+  ],
   "author": "StockSense Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "lucide-react": "^1.48.0",
+    "tailwindcss": "^4.3.3"
+  }
 }
