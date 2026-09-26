@@ -11,8 +11,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
     <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between sticky top-0 z-40 shadow-xs">
       {/* Brand & Main Excalidraw Navigation */}
       <div className="flex items-center gap-8">
-        <div 
-          className="flex items-center gap-2.5 cursor-pointer" 
+        <div
+          className="flex items-center gap-2.5 cursor-pointer"
           onClick={() => setActiveTab('Dashboard')}
         >
           <div className="bg-blue-600 text-white p-2 rounded-xl flex items-center justify-center shadow-md shadow-blue-500/20">
@@ -26,9 +26,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
           {/* Dashboard */}
           <button
             onClick={() => setActiveTab('Dashboard')}
-            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-              activeTab === 'Dashboard' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${activeTab === 'Dashboard' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             Dashboard
           </button>
@@ -37,9 +36,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
           <div className="relative">
             <button
               onClick={() => { setShowOpsMenu(!showOpsMenu); setShowSettingsMenu(false); }}
-              className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab.startsWith('Operations') ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-              }`}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${activeTab.startsWith('Operations') ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                }`}
             >
               <span>Operations</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-60" />
@@ -62,11 +60,11 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
                   <span>Deliveries</span>
                 </button>
                 <button
-                  onClick={() => { setActiveTab('Operations-Transfers'); setShowOpsMenu(false); }}
+                  onClick={() => { setActiveTab('Operations-Adjustments'); setShowOpsMenu(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-semibold rounded-xl text-slate-700 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-2"
                 >
                   <ArrowLeftRight className="w-4 h-4 text-amber-500" />
-                  <span>Internal Transfers</span>
+                  <span>Adjustments</span>
                 </button>
               </div>
             )}
@@ -75,9 +73,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
           {/* Stock */}
           <button
             onClick={() => setActiveTab('Stock')}
-            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-              activeTab === 'Stock' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${activeTab === 'Stock' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             Stock
           </button>
@@ -85,9 +82,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
           {/* Move History */}
           <button
             onClick={() => setActiveTab('Move History')}
-            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${
-              activeTab === 'Move History' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-            }`}
+            className={`px-3.5 py-2 rounded-xl transition-all cursor-pointer ${activeTab === 'Move History' ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+              }`}
           >
             Move History
           </button>
@@ -96,9 +92,8 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
           <div className="relative">
             <button
               onClick={() => { setShowSettingsMenu(!showSettingsMenu); setShowOpsMenu(false); }}
-              className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab.startsWith('Settings') ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-              }`}
+              className={`px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${activeTab.startsWith('Settings') ? 'bg-blue-50 text-blue-600 shadow-xs' : 'text-slate-600 hover:bg-slate-100'
+                }`}
             >
               <span>Settings</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-60" />
@@ -162,4 +157,4 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
       </div>
     </header>
   );
-}
+}

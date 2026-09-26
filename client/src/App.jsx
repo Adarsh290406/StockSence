@@ -4,7 +4,8 @@ import Dashboard from './views/Dashboard';
 import Operations from './views/Operations';
 import Stock from './views/Stock';
 import MoveHistory from './views/MoveHistory';
-import Settings from './views/Settings';
+import WarehouseView from './views/WarehouseView';
+import LocationView from './views/LocationView';
 import AuthModal from './views/AuthModal';
 import { api } from './services/api';
 
@@ -52,10 +53,13 @@ export default function App() {
         {activeTab === 'Operations' && <Operations initialFilter="ALL" />}
         {activeTab === 'Operations-Receipts' && <Operations initialFilter="RECEIPT" />}
         {activeTab === 'Operations-Deliveries' && <Operations initialFilter="DELIVERY" />}
+        {activeTab === 'Operations-Adjustments' && <Operations initialFilter="INTERNAL" />}
         {activeTab === 'Operations-Transfers' && <Operations initialFilter="INTERNAL" />}
         {activeTab === 'Stock' && <Stock />}
         {activeTab === 'Move History' && <MoveHistory />}
-        {activeTab.startsWith('Settings') && <Settings />}
+        {activeTab === 'Settings-Warehouses' && <WarehouseView />}
+        {activeTab === 'Settings-Locations' && <LocationView />}
+        {activeTab === 'Settings' && <LocationView />}
       </main>
     </div>
   );

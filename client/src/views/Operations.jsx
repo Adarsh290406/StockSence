@@ -1,7 +1,8 @@
-// src/views/Operations.jsx
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, List, LayoutGrid, CheckCircle2, AlertCircle, ArrowRight, Eye, RefreshCw } from 'lucide-react';
+import { Plus, Search, List, LayoutGrid, CheckCircle2, AlertCircle, ArrowRight, Eye, RefreshCw, X, Check } from 'lucide-react';
 import { api } from '../services/api';
+import ReceiptFormView from './ReceiptFormView';
+import DeliveryFormView from './DeliveryFormView';
 
 export default function Operations({ initialFilter = 'RECEIPT' }) {
   const [operations, setOperations] = useState([]);
@@ -10,20 +11,23 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('list'); // 'list' | 'kanban'
 
-  // Modals & Aux Data
+  // Dedicated Form View state: null | { type: 'receipt' | 'delivery' | 'internal', id: number | null }
+  const [activeForm, setActiveForm] = useState(null);
+
+  // Modals & Detail views matching Excalidraw sub-wireframes
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedOp, setSelectedOp] = useState(null);
   const [products, setProducts] = useState([]);
   const [locations, setLocations] = useState([]);
 
-  // Form State
+  // Form State for creating new operation with dynamic line items
   const [newOp, setNewOp] = useState({
     operation_type: 'receipt',
     partner_name: '',
     source_location_id: '',
     dest_location_id: '',
     scheduled_date: new Date().toISOString().split('T')[0],
-    product_id: '',
-    demand_qty: 10,
+    items: [{ product_id: '', demand_qty: 10 }]
   });
 
   useEffect(() => {
@@ -33,12 +37,17 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
   const fetchOperations = async () => {
     setLoading(true);
     try {
-      const lowerFilter = filter.toLowerCase();
-      const type = ['receipt', 'delivery', 'internal', 'adjustment'].includes(lowerFilter) ? lowerFilter : undefined;
-      const status = ['draft', 'waiting', 'ready', 'done', 'canceled'].includes(lowerFilter) ? lowerFilter : undefined;
+      const lowerFilter = (filter || '').toLowerCase();
+      const params = {};
 
-      const res = await api.getOperations({ type, status });
-      if (res.success) {
+      if (['receipt', 'delivery', 'internal', 'adjustment'].includes(lowerFilter)) {
+        params.type = lowerFilter;
+      } else if (['draft', 'waiting', 'ready', 'done', 'canceled'].includes(lowerFilter)) {
+        params.status = lowerFilter;
+      }
+
+      const res = await api.getOperations(params);
+      if (res.success && Array.isArray(res.data)) {
         setOperations(res.data);
       }
     } catch (err) {
@@ -54,8 +63,8 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
         api.getProducts(),
         api.getLocations()
       ]);
-      if (prodRes.success) setProducts(prodRes.data);
-      if (locRes.success) setLocations(locRes.data);
+      if (prodRes && prodRes.success) setProducts(prodRes.data || []);
+      if (locRes && locRes.success) setLocations(locRes.data || []);
     } catch (err) {
       console.error('Failed to load aux data:', err);
     }
@@ -69,6 +78,27 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
     fetchAuxData();
   }, []);
 
+  const handleAddItemRow = () => {
+    setNewOp(prev => ({
+      ...prev,
+      items: [...prev.items, { product_id: '', demand_qty: 1 }]
+    }));
+  };
+
+  const handleItemChange = (index, field, value) => {
+    const updated = [...newOp.items];
+    updated[index][field] = value;
+    setNewOp({ ...newOp, items: updated });
+  };
+
+  const handleRemoveItemRow = (index) => {
+    if (newOp.items.length <= 1) return;
+    setNewOp(prev => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== index)
+    }));
+  };
+
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
@@ -78,15 +108,21 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
         source_location_id: newOp.source_location_id ? Number(newOp.source_location_id) : null,
         dest_location_id: newOp.dest_location_id ? Number(newOp.dest_location_id) : null,
         scheduled_date: newOp.scheduled_date,
-        items: [
-          {
-            product_id: Number(newOp.product_id),
-            demand_qty: Number(newOp.demand_qty)
-          }
-        ]
+        items: newOp.items.map(it => ({
+          product_id: Number(it.product_id),
+          demand_qty: Number(it.demand_qty)
+        }))
       });
 
       setShowCreateModal(false);
+      setNewOp({
+        operation_type: filter === 'DELIVERY' ? 'delivery' : filter === 'INTERNAL' ? 'internal' : 'receipt',
+        partner_name: '',
+        source_location_id: '',
+        dest_location_id: '',
+        scheduled_date: new Date().toISOString().split('T')[0],
+        items: [{ product_id: '', demand_qty: 10 }]
+      });
       fetchOperations();
     } catch (err) {
       alert(err.message);
@@ -97,21 +133,57 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
     if (!window.confirm(`Validate and finalize operation ${refNo}? This will immediately update physical stock in PostgreSQL.`)) return;
     try {
       await api.validateOperation(id);
+      if (selectedOp && selectedOp.id === id) {
+        setSelectedOp(null);
+      }
       fetchOperations();
     } catch (err) {
       alert(err.message);
     }
   };
 
-  const handleCancel = async (id) => {
-    if (!window.confirm('Are you sure you want to cancel this operation?')) return;
+  const handleViewDetail = async (op) => {
+    if (op.operation_type === 'receipt') {
+      setActiveForm({ type: 'receipt', id: op.id });
+      return;
+    }
+    if (op.operation_type === 'delivery') {
+      setActiveForm({ type: 'delivery', id: op.id });
+      return;
+    }
     try {
-      await api.cancelOperation(id);
-      fetchOperations();
+      const res = await api.getOperation(op.id);
+      if (res.success) {
+        setSelectedOp(res.data);
+      }
     } catch (err) {
-      alert(err.message);
+      alert('Failed to load operation detail');
     }
   };
+
+  if (activeForm && activeForm.type === 'receipt') {
+    return (
+      <ReceiptFormView
+        opId={activeForm.id}
+        onBack={() => setActiveForm(null)}
+        onSaved={() => {
+          fetchOperations();
+        }}
+      />
+    );
+  }
+
+  if (activeForm && activeForm.type === 'delivery') {
+    return (
+      <DeliveryFormView
+        opId={activeForm.id}
+        onBack={() => setActiveForm(null)}
+        onSaved={() => {
+          fetchOperations();
+        }}
+      />
+    );
+  }
 
   const filteredOps = operations.filter(op => {
     if (!search) return true;
@@ -127,7 +199,7 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
   const getPageTitle = () => {
     if (filter === 'RECEIPT') return 'Receipts';
     if (filter === 'DELIVERY') return 'Delivery Orders';
-    if (filter === 'INTERNAL') return 'Internal Transfers';
+    if (filter === 'INTERNAL') return 'Adjustments';
     return 'Stock Operations';
   };
 
@@ -139,11 +211,17 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
         <div className="flex items-center space-x-4">
           <button
             onClick={() => {
-              setNewOp(prev => ({
-                ...prev,
-                operation_type: filter === 'DELIVERY' ? 'delivery' : filter === 'INTERNAL' ? 'internal' : 'receipt'
-              }));
-              setShowCreateModal(true);
+              if (filter === 'RECEIPT') {
+                setActiveForm({ type: 'receipt', id: null });
+              } else if (filter === 'DELIVERY') {
+                setActiveForm({ type: 'delivery', id: null });
+              } else {
+                setNewOp(prev => ({
+                  ...prev,
+                  operation_type: 'receipt'
+                }));
+                setShowCreateModal(true);
+              }
             }}
             className="flex items-center space-x-1.5 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-xs hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
           >
@@ -163,11 +241,10 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  filter === tab 
-                    ? 'bg-white text-blue-600 shadow-xs' 
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${filter === tab
+                    ? 'bg-white text-blue-600 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 {tab}
               </button>
@@ -191,18 +268,16 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
             <button
               onClick={() => setViewMode('list')}
               title="List View"
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                viewMode === 'list' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-700'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === 'list' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-700'
+                }`}
             >
               <List className="w-4 h-4" />
             </button>
             <button
               onClick={() => setViewMode('kanban')}
               title="Kanban View (by status)"
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                viewMode === 'kanban' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-700'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${viewMode === 'kanban' ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-400 hover:text-slate-700'
+                }`}
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -245,9 +320,12 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                   return (
                     <tr key={op.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="p-4 font-mono font-bold text-slate-900 text-xs">
-                        <span className="px-2 py-1 bg-slate-100 rounded-md border border-slate-200">
+                        <button
+                          onClick={() => handleViewDetail(op)}
+                          className="px-2 py-1 bg-slate-100 rounded-md border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors cursor-pointer text-left"
+                        >
                           {op.reference_no}
-                        </span>
+                        </button>
                       </td>
                       <td className="p-4 text-slate-600 font-medium text-xs">
                         {op.source_location_name || (op.operation_type === 'receipt' ? 'vendor' : 'WH/Stock')}
@@ -263,17 +341,22 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                         {isLate && <span className="ml-1 text-[10px] text-rose-600 font-bold">(Late)</span>}
                       </td>
                       <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${
-                          isDone ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                          isReady ? 'bg-blue-100 text-blue-800 border border-blue-200' :
-                          op.status === 'waiting' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
-                          op.status === 'canceled' ? 'bg-slate-100 text-slate-400' :
-                          'bg-slate-100 text-slate-700'
-                        }`}>
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${isDone ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                            isReady ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                              op.status === 'waiting' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                op.status === 'canceled' ? 'bg-slate-100 text-slate-400' :
+                                  'bg-slate-100 text-slate-700'
+                          }`}>
                           {op.status}
                         </span>
                       </td>
-                      <td className="p-4 text-right">
+                      <td className="p-4 text-right space-x-2">
+                        <button
+                          onClick={() => handleViewDetail(op)}
+                          className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
+                        >
+                          View
+                        </button>
                         {!isDone && op.status !== 'canceled' && (
                           <button
                             onClick={() => handleValidate(op.id, op.reference_no)}
@@ -308,7 +391,12 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                     {items.map(op => (
                       <div key={op.id} className="p-3 bg-slate-50/70 border border-slate-200 rounded-lg space-y-2 hover:border-blue-300 transition-colors">
                         <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs font-bold text-slate-900">{op.reference_no}</span>
+                          <button
+                            onClick={() => handleViewDetail(op)}
+                            className="font-mono text-xs font-bold text-slate-900 hover:text-blue-600"
+                          >
+                            {op.reference_no}
+                          </button>
                           <span className="text-[10px] text-slate-500 font-medium">{op.scheduled_date || 'Today'}</span>
                         </div>
                         <p className="text-xs font-semibold text-slate-800 truncate">
@@ -319,7 +407,7 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                           {op.status !== 'done' && (
                             <button
                               onClick={() => handleValidate(op.id, op.reference_no)}
-                              className="text-xs font-bold text-emerald-600 hover:text-emerald-800"
+                              className="text-xs font-bold text-emerald-600 hover:text-emerald-800 cursor-pointer"
                             >
                               Validate
                             </button>
@@ -338,7 +426,104 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
         )}
       </div>
 
-      {/* New Operation Modal */}
+      {/* Operation Detail Card Modal matching Excalidraw Form screen */}
+      {selectedOp && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-100 space-y-5">
+            {/* Header with Reference and Status Pill */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center space-x-3">
+                <span className="text-xs font-bold uppercase tracking-wider bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-200">
+                  {selectedOp.operation_type}
+                </span>
+                <h3 className="font-mono font-extrabold text-xl text-slate-900">{selectedOp.reference_no}</h3>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${selectedOp.status === 'done' ? 'bg-emerald-100 text-emerald-800' :
+                    selectedOp.status === 'ready' ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                  {selectedOp.status}
+                </span>
+                <button
+                  onClick={() => setSelectedOp(null)}
+                  className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Information Grid matching Excalidraw Form Fields */}
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <span className="text-slate-400 font-semibold block">Receive From / Contact</span>
+                <p className="font-bold text-slate-800 text-sm mt-0.5">{selectedOp.partner_name || 'vendor'}</p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold block">Destination / Delivery Address</span>
+                <p className="font-bold text-slate-800 text-sm mt-0.5">{selectedOp.dest_location_name || 'WH/Stock1'}</p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold block">Schedule Date</span>
+                <p className="font-mono text-slate-700 mt-0.5">{selectedOp.scheduled_date || 'Immediate'}</p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold block">Source Location</span>
+                <p className="font-mono text-slate-700 mt-0.5">{selectedOp.source_location_name || 'Vendor Intake'}</p>
+              </div>
+            </div>
+
+            {/* Line items Table matching Excalidraw Line Item Spec */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <tr>
+                    <th className="p-3">Product</th>
+                    <th className="p-3">Demand Qty</th>
+                    <th className="p-3">Done Qty</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedOp.items?.map(item => (
+                    <tr key={item.id}>
+                      <td className="p-3 font-semibold text-slate-800">
+                        {item.product_name} <span className="font-mono text-slate-400 font-normal">({item.product_sku})</span>
+                      </td>
+                      <td className="p-3 font-bold text-slate-900">{item.demand_qty} {item.uom}</td>
+                      <td className="p-3 font-bold text-emerald-600">{item.done_qty} {item.uom}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-xs text-slate-400">
+                Created by {selectedOp.created_by_name || 'System Admin'}
+              </span>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setSelectedOp(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Close
+                </button>
+                {selectedOp.status !== 'done' && selectedOp.status !== 'canceled' && (
+                  <button
+                    onClick={() => handleValidate(selectedOp.id, selectedOp.reference_no)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-xs cursor-pointer"
+                  >
+                    Validate & Update Stock
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Operation Modal matching Excalidraw creation requirements */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
@@ -349,21 +534,21 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                 <select
                   value={newOp.operation_type}
                   onChange={(e) => setNewOp({ ...newOp, operation_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium"
                 >
                   <option value="receipt">Receipt (Vendor → Warehouse)</option>
                   <option value="delivery">Delivery (Warehouse → Customer)</option>
-                  <option value="internal">Internal Transfer (Location → Location)</option>
+                  <option value="internal">Adjustment (Location → Location)</option>
                 </select>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Partner / Vendor / Customer Name</label>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Partner / Contact Name</label>
                 <input
                   type="text"
                   value={newOp.partner_name}
                   onChange={(e) => setNewOp({ ...newOp, partner_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm font-medium"
                   placeholder="e.g. Azure Interior"
                 />
               </div>
@@ -397,39 +582,75 @@ export default function Operations({ initialFilter = 'RECEIPT' }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Product</label>
-                  <select
-                    required
-                    value={newOp.product_id}
-                    onChange={(e) => setNewOp({ ...newOp, product_id: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">Schedule Date</label>
+                <input
+                  type="date"
+                  value={newOp.scheduled_date}
+                  onChange={(e) => setNewOp({ ...newOp, scheduled_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+              </div>
+
+              {/* Line Items Section */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">Line Items</span>
+                  <button
+                    type="button"
+                    onClick={handleAddItemRow}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
                   >
-                    <option value="">Select product...</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
-                    ))}
-                  </select>
+                    + Add Row
+                  </button>
                 </div>
-                <div>
-                  <label className="text-xs font-bold text-slate-600 block mb-1">Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={newOp.demand_qty}
-                    onChange={(e) => setNewOp({ ...newOp, demand_qty: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
-                  />
-                </div>
+
+                {newOp.items.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-7">
+                      <select
+                        required
+                        value={item.product_id}
+                        onChange={(e) => handleItemChange(idx, 'product_id', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-xs"
+                      >
+                        <option value="">Select product...</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-span-4">
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={item.demand_qty}
+                        onChange={(e) => handleItemChange(idx, 'demand_qty', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-xs"
+                        placeholder="Qty"
+                      />
+                    </div>
+                    <div className="col-span-1 text-center">
+                      {newOp.items.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItemRow(idx)}
+                          className="text-rose-500 hover:text-rose-700 text-xs font-bold cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-50"
+                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-sm font-semibold hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
