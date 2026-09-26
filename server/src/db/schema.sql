@@ -150,13 +150,24 @@ CREATE TABLE IF NOT EXISTS reordering_rules (
     FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
 );
 
--- Performance Indexes
+-- Performance & High-Concurrency (100x) Indexes
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
+CREATE INDEX IF NOT EXISTS idx_products_search ON products(name, sku);
+
 CREATE INDEX IF NOT EXISTS idx_stock_quants_lookup ON stock_quants(product_id, location_id);
+CREATE INDEX IF NOT EXISTS idx_stock_quants_loc ON stock_quants(location_id);
+
 CREATE INDEX IF NOT EXISTS idx_operations_type_status ON operations(operation_type, status);
 CREATE INDEX IF NOT EXISTS idx_operations_ref ON operations(reference_no);
 CREATE INDEX IF NOT EXISTS idx_operations_date ON operations(scheduled_date);
+CREATE INDEX IF NOT EXISTS idx_operations_dash ON operations(operation_type, status, scheduled_date);
+
 CREATE INDEX IF NOT EXISTS idx_move_lines_op ON stock_move_lines(operation_id);
-CREATE INDEX IF NOT EXISTS idx_stock_ledger_prod ON stock_ledger(product_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_move_lines_prod ON stock_move_lines(product_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_prod ON stock_ledger(product_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_stock_ledger_from_to ON stock_ledger(from_location_id, to_location_id);
+CREATE INDEX IF NOT EXISTS idx_stock_ledger_created ON stock_ledger(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_password_resets_lookup ON password_resets(email, otp, expires_at);

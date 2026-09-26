@@ -7,13 +7,15 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-// Configure connection pool with environmental defaults
+// Configure connection pool optimized for high throughput & 100x concurrency
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/stocksense',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  max: parseInt(process.env.DB_POOL_MAX || '50', 10), // Increased max connections
+  min: parseInt(process.env.DB_POOL_MIN || '5', 10),   // Keep pre-warmed standby connections
+  idleTimeoutMillis: 10000,                           // Free idle connections faster
+  connectionTimeoutMillis: 3000,                      // Fast-fail if pool is starved
+  statement_timeout: 10000,                           // Cancel long rogue queries (>10s)
 });
 
 pool.on('error', (err) => {
